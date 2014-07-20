@@ -1,0 +1,118 @@
+## Machine Learning Project 
+
+# Background 
+
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. In this project, our goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. One set of 10 repetitions of the Unilateral Dumbbell Biceps Curl were undetaken in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+We wish to create a model that if we feed in someones exercise data, we'll be able to identify these common problems, or if the exercise was done correctly.  
+
+
+
+```{r message=FALSE}
+library(RCurl); library(caret)
+
+```
+
+```{r cache=TRUE, message=FALSE}
+# Read the training data for this project, ideally for reproducibility you'd just uncomment these 2 lines, but since I have slow internet and capped internet, I downloaded the file and initiate locally. 
+
+#x <- getURL("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv")
+#training <- read.csv(text=x, stringAsFactors=F)
+
+training <- read.csv("pml-training.csv")
+
+# The testing data set for which we have to predict exercise groups:
+
+x <- getURL("http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv")
+testing <- read.csv(text=x)
+
+# This is a messy dataset. Variables with many NA are not useful. I exclude these by combining all into 1 data set, extracting the useful variables, and then split again (mostly just to ease the modelling process later on):
+names(testing) <- names(training)
+data <- rbind(training, testing)
+```
+
+```{r}
+data[data=="#DIV/0!"] <- NA
+data[data==""] <- NA
+
+temp <- rep(NA, 160)
+for(i in 1:160){
+        #in an initial histogram I saw that the 0.2 is a convenient split to get rid of NA dominated columns:
+                if(mean(is.na(data[i]))<=0.2){temp[i]=names(data[i])}
+}
+temp <- na.omit(temp) #this variable stores valid variable names
+#remove non predictor values:
+temp <- temp[-(1:7)]
+
+## I now select the data
+t2 <- data.frame(seq(1:nrow(data))) #initialize dataframe
+
+for(i in 1:160){
+        if(names(data[i]) %in% temp){t2 <- cbind(t2, data[i])}
+}
+#remove initialization
+t2 <- t2[-1]
+sum(is.na(t2))# this is a NA free dataset :)
+
+# split back into initial datasets:
+training <- t2[1:(nrow(t2)-20),]
+testing <- t2[(nrow(t2)-19):nrow(t2),]
+testing$classe <- seq(1:20)
+
+# Set overall Seed
+
+set.seed(111)
+
+# Split for cross-validation
+inTrain <- createDataPartition(y=training$classe, p=0.7, list=FALSE)
+train <- training[inTrain, ]
+test <- training[-inTrain, ]
+
+## initial build of model using random forest
+
+# THESE 3 LINES FOR PCA - WHICH MAKES A FASTER MODEL RUN
+#preProc <- preProcess(train[, -53], method="pca", thresh=.95)
+#pretrain <- predict(preProc, train[,-53])
+#pretrain <- cbind(pretrain, train[,53])
+modFit2 <- train(classe~., method="rf", data=train)#CHANGE DATA = PRETRAIN FOR PCA
+
+# here we can identify the key covariates and plot them:
+modFit2$finalModel
+
+## Cross validation
+
+# pretest <- predict(preProc, test[,-53]) # THESE 2 STEPS TO GO WITH PCA
+# pretest <- cbind(pretest, test$classe)
+
+predictions <- predict(modFit2, newdata=test)
+confusionMatrix(predictions, test$classe)
+
+## expected out of sample error is the 95% CI
+
+# Now for the final answers:
+# pretest <- predict(preProc, testing[,-53])
+# pretest <- cbind(pretest, testing[,53])
+
+answers <- predict(modFit2, newdata=testing)
+
+```
+
+## Why I made the choices I did  
+
+The goal of this project was to predict the manner in which they did the exercise. There were many variables, most NA, and a simple na.omit(data) resulted in an empty dataset! So I applied a selective sorting to select on the principal data, ignoring many max, min, kurtosis etc elements derived from this data, and which must improve model performance for the official report (Velloso 2013). It would have been nice to select the 2.5s time window as this is suggested to improve model fit, but how to do this was not straightforward.  
+
+In an initial rpart analysis, cross validation showed this model was not great 49.9 - 52.5%, so many of the 'error' movements (B - E) are mistakenly recorded as A (ie. correct way to do the exercise). So random forest trees are the way to go, even if you have to wait for your hours for the computer to process the model.  
+
+
+# References
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6. 
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013. 
+
+Read more: http://groupware.les.inf.puc-rio.br/har#dataset#ixzz37haeyycW
+
+# Data   
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har. 
